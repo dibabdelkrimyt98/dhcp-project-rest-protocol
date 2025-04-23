@@ -1,37 +1,48 @@
-use dhcp_project::server::DhcpServer;
+mod client;
+mod server;
+mod message;
+mod config;
+mod database;
+
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use tokio::net::UdpSocket;
+use dhcp_project::server::DhcpServer;
+use dhcp_project::database::init::init_db;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use dhcp_project::database::init::init_db;
+use config::Config;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Simple logging
-    println!("[INFO] DHCP Server starting...");
+    let config = Config::from_args();
 
-    // Create SQLite pool
-    let manager = SqliteConnectionManager::file("dhcp.db");
-    let pool = Pool::new(manager).expect("[ERROR] Failed to create DB pool");
-
-    // Initialize database
-    {
-        let conn = pool.get().expect("[ERROR] Failed to get DB connection");
-        init_db(&conn).expect("[ERROR] Failed to initialize DB schema");
+    if std::env::args().collect::<Vec<String>>().contains(&"--client".to_string()) {
+        client::run(config)?;
+        return Ok(());
     }
 
-    // Create DHCP server
-    let dhcp_server = DhcpServer::new(pool);
+    println!("[INFO] DHCP Server starting in mode {:?}...", config.mode);
 
-    // Start listening on port 67 (default DHCP port)
-    let socket = UdpSocket::bind("0.0.0.0:67").await?;
+    // Création du pool SQLite
+    let manager = SqliteConnectionManager::file("dhcp.db");
+    let pool = Pool::new(manager)?;
+    {
+        let conn = pool.get()?;
+        init_db(&conn)?;
+    }
+
+    let dhcp_server = DhcpServer::new(pool);
+    let bind_address = format!("{}:{}", config.interface, config.port);
+    let socket = UdpSocket::bind(&bind_address).await?;
     socket.set_broadcast(true)?;
 
-    println!("[INFO] Listening on 0.0.0.0:67...");
+    println!("[INFO] Listening on {}...", bind_address);
 
-    // Run the server
-    dhcp_server.run(socket).await?;
-    
+    match dhcp_server.run(socket).await {
+        Ok(_) => println!("[INFO] Server stopped normally."),
+        Err(e) => eprintln!("[ERROR] Server error: {}", e),
+    }
+
     Ok(())
 }

@@ -1,4 +1,5 @@
 use dhcp_project::client;
+use dhcp_project::config::Config;
 
 #[tokio::test]
 async fn test_send_discover() {
@@ -9,7 +10,12 @@ async fn test_send_discover() {
 
     // Run client in separate task
     tokio::spawn(async {
-        client::discovery::send_discover().unwrap();
+        let config = Config {
+            interface: "127.0.0.1".to_string(),
+            port: 67,
+            mode: "test".to_string(),
+        };
+        client::run(config).unwrap();
     });
 
     let mut buf = [0; 1024];

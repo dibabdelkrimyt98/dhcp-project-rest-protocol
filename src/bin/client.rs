@@ -10,12 +10,12 @@ async fn main() -> std::io::Result<()> {
     socket.set_broadcast(true)?;
     
     // Send DISCOVER message
-    println!("Sending DISCOVER message...");
+    println!("Sending DISCOVER message to 255.255.255.255:6767...");
     let discover = json!({
         "msg_type": "DISCOVER"
     }).to_string();
     
-    socket.send_to(discover.as_bytes(), "255.255.255.255:67").await?;
+    socket.send_to(discover.as_bytes(), "255.255.255.255:6767").await?;
     
     // Wait for OFFER response
     let mut buf = [0; 1024];

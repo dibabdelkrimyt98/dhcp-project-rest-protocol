@@ -4,11 +4,12 @@ use rusqlite::params;
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
+use std::net::SocketAddr;
 use std::error::Error;
 use r2d2_sqlite::SqliteConnectionManager;
 use crate::message::DHCPMessage;
 use std::time::{SystemTime, Duration};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::Ipv4Addr;
 
 #[derive(Debug, Serialize, Deserialize)]
 enum MessageType {
@@ -51,16 +52,6 @@ impl DhcpServer {
                 eprintln!("Error handling packet: {}", e);
             }
         }
-    }
-
-    async fn handle_packet(&self, data: Vec<u8>, addr: SocketAddr) -> Result<(), Box<dyn Error>> {
-        // For now, just print the received data
-        println!("Received packet from {}: {:?}", addr, data);
-        
-        // In a real implementation, we would parse the DHCP packet here
-        // and handle different message types
-        
-        Ok(())
     }
 
     fn load_existing_leases(pool: &r2d2::Pool<SqliteConnectionManager>) -> HashMap<Ipv4Addr, Lease> {
@@ -110,6 +101,16 @@ impl DhcpServer {
         )?;
         Ok(())
     }
+
+    async fn handle_packet(&self, data: Vec<u8>, src: SocketAddr) -> Result<(), Box<dyn Error>> {
+        // For now, just print the received data
+        println!("Received packet from {}: {:?}", src, data);
+        
+        // In a real implementation, we would parse the DHCP packet here
+        // and handle different message types
+        
+        Ok(())
+    }
 }
 
 #[tokio::main]
@@ -130,7 +131,7 @@ pub async fn start_server() -> std::io::Result<()> {
         ).unwrap();
     }
 
-    let _server = DhcpServer::new(pool);
+    let server = DhcpServer::new(pool);
     let socket = UdpSocket::bind("0.0.0.0:67").await?;
     let mut buf = [0; 1024];
 
