@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a default server instead of loading from config
     let server = Arc::new(DhcpServer::new_default());
-    let socket = UdpSocket::bind("0.0.0.0:67").await?;
+    let socket = UdpSocket::bind("0.0.0.0:6767").await?;
     let mut buf = [0u8; 576];
 
     let server_clone = server.clone();
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_clone.reclaim_expired_leases().await;
     });
 
-    println!("DHCP Server listening on 0.0.0.0:67");
+    println!("DHCP Server listening on 0.0.0.0:6767");
 
     loop {
         let (len, addr) = socket.recv_from(&mut buf).await?;

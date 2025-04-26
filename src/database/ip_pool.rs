@@ -1,31 +1,34 @@
-use std::net::Ipv4Addr;
 use std::collections::VecDeque;
+use std::net::Ipv4Addr;
+use rand::seq::SliceRandom;
 
 pub struct IpPool {
-    available: VecDeque<Ipv4Addr>,
+    pub available: VecDeque<Ipv4Addr>,
 }
 
 impl IpPool {
-    pub fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
-        let mut available = VecDeque::new();
-        let mut current = u32::from(start);
-        let end = u32::from(end);
+    pub fn new(start: &str, end: &str) -> Self {
+        let start_ip: Ipv4Addr = start.parse().unwrap();
+        let end_ip: Ipv4Addr = end.parse().unwrap();
 
-        while current <= end {
-            available.push_back(Ipv4Addr::from(current));
-            current += 1;
+        let start_octets = start_ip.octets();
+        let end_octets = end_ip.octets();
+
+        let mut ips = VecDeque::new();
+        for i in start_octets[3]..=end_octets[3] {
+            ips.push_back(Ipv4Addr::new(start_octets[0], start_octets[1], start_octets[2], i));
         }
 
-        Self { available }
+        Self { available: ips }
     }
 
-    pub fn get_next(&mut self) -> Option<Ipv4Addr> {
-        self.available.pop_front()
-    }
-
-    pub fn release(&mut self, ip: Ipv4Addr) {
-        if !self.available.contains(&ip) {
+    pub fn get_random(&mut self) -> Option<Ipv4Addr> {
+        let mut vec: Vec<_> = self.available.drain(..).collect();
+        vec.shuffle(&mut rand::thread_rng());
+        let ip = vec.pop();
+        for ip in vec {
             self.available.push_back(ip);
         }
+        ip
     }
 }
