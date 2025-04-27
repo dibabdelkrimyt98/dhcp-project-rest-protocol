@@ -3,6 +3,8 @@ mod server;
 mod message;
 mod config;
 mod database;
+mod api;
+mod utils;
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -12,6 +14,7 @@ use dhcp_project::database::init::init_db;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use config::Config;
+use tokio::task;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -39,10 +42,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[INFO] Listening on {}...", bind_address);
 
+    // Start API server in a separate task
+    let api_handle = task::spawn_blocking(|| {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(async {
+                if let Err(e) = api::start_api_server().await {
+                    eprintln!("[ERROR] API server error: {}", e);
+                }
+            })
+    });
+
+    // Run DHCP server
     match dhcp_server.run(socket).await {
         Ok(_) => println!("[INFO] Server stopped normally."),
         Err(e) => eprintln!("[ERROR] Server error: {}", e),
     }
+
+    // Wait for API server to complete (it won't unless there's an error)
+    let _ = api_handle.await;
 
     Ok(())
 }

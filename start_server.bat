@@ -1,1 +1,3 @@
- 
+@echo off
+echo Starting DHCP Manager Server...
+cargo run 

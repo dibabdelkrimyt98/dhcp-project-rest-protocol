@@ -1,14 +1,36 @@
 use serde_json::Value;
 use std::net::Ipv4Addr;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub mac_address: String,
+    #[serde(with = "ipv4_addr_serde")]
     pub ip_address: Ipv4Addr,
     pub device_type: String,
     pub brand: String,
     pub connection_type: String,
     pub data_transferred_bytes: u64,
+}
+
+pub mod ipv4_addr_serde {
+    use std::net::Ipv4Addr;
+    use serde::{Serializer, Deserializer, Deserialize};
+
+    pub fn serialize<S>(ip: &Ipv4Addr, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&ip.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Ipv4Addr, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 pub fn extract_devices(json_data: &Value) -> Vec<DeviceInfo> {
