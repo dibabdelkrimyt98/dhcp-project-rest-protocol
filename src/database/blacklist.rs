@@ -1,27 +1,26 @@
-use rusqlite::{params, Connection};
-use std::error::Error;
+use rusqlite::{Connection, Result};
 
-pub fn init_blacklist_table(conn: &Connection) -> rusqlite::Result<()> {
+pub fn init_blacklist_table(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS blacklist (
-            mac TEXT PRIMARY KEY,
-            reason TEXT
+            mac_address TEXT PRIMARY KEY,
+            reason TEXT,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
     Ok(())
 }
 
-pub fn is_blacklisted(conn: &Connection, mac: &str) -> rusqlite::Result<bool> {
-    let mut stmt = conn.prepare("SELECT COUNT(*) FROM blacklist WHERE mac = ?1")?;
-    let count: i64 = stmt.query_row(params![mac], |row| row.get(0))?;
-    Ok(count > 0)
+pub fn is_blacklisted(conn: &Connection, mac_address: &str) -> Result<bool> {
+    let mut stmt = conn.prepare("SELECT 1 FROM blacklist WHERE mac_address = ?")?;
+    Ok(stmt.exists([mac_address])?)
 }
 
-pub fn add_to_blacklist(conn: &Connection, mac: &str, reason: &str) -> rusqlite::Result<()> {
+pub fn add_to_blacklist(conn: &Connection, mac_address: &str, reason: &str) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO blacklist (mac, reason) VALUES (?1, ?2)",
-        params![mac, reason],
+        "INSERT OR REPLACE INTO blacklist (mac_address, reason) VALUES (?1, ?2)",
+        [mac_address, reason],
     )?;
     Ok(())
 }

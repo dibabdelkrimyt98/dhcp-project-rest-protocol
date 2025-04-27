@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use rusqlite::Connection;
+use std::process::Command;
 
 use crate::database::devices::{init_db, insert_device};
 use dhcp_project::utils::device_parser::DeviceInfo;
@@ -144,6 +145,74 @@ async fn get_stats() -> impl Responder {
     })
 }
 
+// Server control handlers
+async fn start_server() -> impl Responder {
+    println!("Attempting to start server...");
+    match Command::new("cargo")
+        .args(["run", "--bin", "dhcp_project"])
+        .spawn() {
+            Ok(_) => {
+                println!("Server started successfully");
+                HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: (),
+                    message: "Server started successfully".to_string(),
+                })
+            },
+            Err(e) => {
+                println!("Failed to start server: {}", e);
+                HttpResponse::InternalServerError().json(ApiResponse {
+                    success: false,
+                    data: (),
+                    message: format!("Failed to start server: {}", e),
+                })
+            },
+        }
+}
+
+async fn stop_server() -> impl Responder {
+    println!("Attempting to stop server...");
+    // This is a simplified version. In a real application, you would need to
+    // track the server process and terminate it properly.
+    match Command::new("taskkill")
+        .args(["/F", "/IM", "dhcp_project.exe"])
+        .spawn() {
+            Ok(_) => {
+                println!("Server stopped successfully");
+                HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: (),
+                    message: "Server stopped successfully".to_string(),
+                })
+            },
+            Err(e) => {
+                println!("Failed to stop server: {}", e);
+                HttpResponse::InternalServerError().json(ApiResponse {
+                    success: false,
+                    data: (),
+                    message: format!("Failed to stop server: {}", e),
+                })
+            },
+        }
+}
+
+async fn restart_server() -> impl Responder {
+    println!("Attempting to restart server...");
+    // First stop the server
+    stop_server().await;
+    
+    // Then start it again
+    start_server().await;
+    
+    // Return success response
+    println!("Server restart completed");
+    HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: (),
+        message: "Server restarted successfully".to_string(),
+    })
+}
+
 // API routes configuration
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -151,24 +220,37 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/devices", web::get().to(get_devices))
             .route("/users", web::get().to(get_users))
             .route("/stats", web::get().to(get_stats))
+            .route("/server/start", web::post().to(start_server))
+            .route("/server/stop", web::post().to(stop_server))
+            .route("/server/restart", web::post().to(restart_server))
     );
 }
 
 // Start the API server
 pub async fn start_api_server() -> std::io::Result<()> {
-    println!("Starting API server on http://127.0.0.1:8080");
+    const API_PORT: u16 = 3000; // Changed from 8080 to 3000
     
-    HttpServer::new(|| {
+    println!("Starting API server on http://127.0.0.1:{}", API_PORT);
+    
+    match HttpServer::new(|| {
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
-            .allow_any_header();
+            .allow_any_header()
+            .max_age(3600);
             
         App::new()
             .wrap(cors)
             .configure(configure_routes)
     })
-    .bind("127.0.0.1:8080")?
-    .run()
-    .await
+    .bind(("127.0.0.1", API_PORT)) {
+        Ok(server) => {
+            println!("API server successfully bound to port {}", API_PORT);
+            server.run().await
+        },
+        Err(e) => {
+            eprintln!("Failed to bind API server to port {}: {}", API_PORT, e);
+            Err(e)
+        }
+    }
 } 
