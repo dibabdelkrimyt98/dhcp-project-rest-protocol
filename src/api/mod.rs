@@ -6,7 +6,8 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use rusqlite::Connection;
-use std::process::Command;
+use std::{process::Command, thread, time::Duration};
+
 
 use crate::database::devices::{init_db, insert_device};
 use dhcp_project::utils::device_parser::DeviceInfo;
@@ -145,65 +146,49 @@ async fn get_stats() -> impl Responder {
     })
 }
 
-// Server control handlers
-async fn start_server() -> impl Responder {
-    println!("Attempting to start server...");
-    match Command::new("cargo")
-        .args(["run", "--bin", "dhcp_project"])
-        .spawn() {
-            Ok(_) => {
-                println!("Server started successfully");
-                HttpResponse::Ok().json(ApiResponse {
-                    success: true,
-                    data: (),
-                    message: "Server started successfully".to_string(),
-                })
-            },
-            Err(e) => {
-                println!("Failed to start server: {}", e);
-                HttpResponse::InternalServerError().json(ApiResponse {
-                    success: false,
-                    data: (),
-                    message: format!("Failed to start server: {}", e),
-                })
-            },
-        }
+// Only kill/start the DHCP server process, not the API server process
+async fn start_dhcp_server() -> impl Responder {
+    // Start the DHCP server process (not the API server)
+    match Command::new("dhcp_project.exe").spawn() {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: (),
+            message: "DHCP server started successfully".to_string(),
+        }),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse {
+            success: false,
+            data: (),
+            message: format!("Failed to start DHCP server: {}", e),
+        }),
+    }
 }
 
-async fn stop_server() -> impl Responder {
-    println!("Attempting to stop server...");
-    // This is a simplified version. In a real application, you would need to
-    // track the server process and terminate it properly.
-    match Command::new("taskkill")
-        .args(["/F", "/IM", "dhcp_project.exe"])
-        .spawn() {
-            Ok(_) => {
-                println!("Server stopped successfully");
-                HttpResponse::Ok().json(ApiResponse {
-                    success: true,
-                    data: (),
-                    message: "Server stopped successfully".to_string(),
-                })
-            },
-            Err(e) => {
-                println!("Failed to stop server: {}", e);
-                HttpResponse::InternalServerError().json(ApiResponse {
-                    success: false,
-                    data: (),
-                    message: format!("Failed to stop server: {}", e),
-                })
-            },
-        }
+async fn stop_dhcp_server() -> impl Responder {
+    // Stop the DHCP server process (not the API server)
+    match Command::new("taskkill").args(["/F", "/IM", "dhcp_project.exe"]).spawn() {
+        Ok(_) => HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: (),
+            message: "DHCP server stopped successfully".to_string(),
+        }),
+        Err(e) => HttpResponse::InternalServerError().json(ApiResponse {
+            success: false,
+            data: (),
+            message: format!("Failed to stop DHCP server: {}", e),
+        }),
+    }
 }
-
 async fn restart_server() -> impl Responder {
     println!("Attempting to restart server...");
-    // First stop the server
-    stop_server().await;
-    
+    // First stop the DHCP server
+    let stop_response = stop_dhcp_server().await;
+
+    // Wait a bit to ensure the process is fully stopped
+    thread::sleep(Duration::from_secs(2));
+
     // Then start it again
-    start_server().await;
-    
+    let start_response = start_dhcp_server().await;
+
     // Return success response
     println!("Server restart completed");
     HttpResponse::Ok().json(ApiResponse {
@@ -212,7 +197,6 @@ async fn restart_server() -> impl Responder {
         message: "Server restarted successfully".to_string(),
     })
 }
-
 // API routes configuration
 pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -220,12 +204,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
             .route("/devices", web::get().to(get_devices))
             .route("/users", web::get().to(get_users))
             .route("/stats", web::get().to(get_stats))
-            .route("/server/start", web::post().to(start_server))
-            .route("/server/stop", web::post().to(stop_server))
+            .route("/server/start", web::post().to(start_dhcp_server))
+            .route("/server/stop", web::post().to(stop_dhcp_server))
             .route("/server/restart", web::post().to(restart_server))
     );
 }
-
 // Start the API server
 pub async fn start_api_server() -> std::io::Result<()> {
     const API_PORT: u16 = 3000; // Changed from 8080 to 3000
@@ -234,7 +217,7 @@ pub async fn start_api_server() -> std::io::Result<()> {
     
     match HttpServer::new(|| {
         let cors = Cors::default()
-            .allow_any_origin()
+            .allowed_origin("http://127.0.0.1:5500")
             .allow_any_method()
             .allow_any_header()
             .max_age(3600);
@@ -253,4 +236,4 @@ pub async fn start_api_server() -> std::io::Result<()> {
             Err(e)
         }
     }
-} 
+}
